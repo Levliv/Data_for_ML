@@ -46,7 +46,7 @@
       "text-generation",
       "question-answering"
     ],
-    "relevance_score": 8
+    "relevance_score": 7
   },
   {
     "id": "RJ1200/Programming_Questions",
@@ -57,12 +57,12 @@
     "likes": 0,
     "size_category": "unknown",
     "license": "unknown",
-    "description": "A general repository of programming-related questions. Useful for training models on technical problem-solving and coding logic.",
+    "description": "A general dataset containing various programming-related questions. Useful for training models on technical Q&A formats.",
     "ml_tasks": [
       "text-generation",
       "question-answering"
     ],
-    "relevance_score": 7
+    "relevance_score": 6
   },
   {
     "id": "RJ1200/Programming-Questions",
@@ -73,11 +73,11 @@
     "likes": 0,
     "size_category": "unknown",
     "license": "unknown",
-    "description": "A general repository of programming-related questions. Useful for training models on technical problem-solving and coding logic.",
+    "description": "A general dataset containing various programming-related questions. Useful for training models on technical Q&A formats.",
     "ml_tasks": [
       "text-generation",
       "question-answering"
     ],
-    "relevance_score": 7
+    "relevance_score": 5
   }
 ]

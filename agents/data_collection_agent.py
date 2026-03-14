@@ -485,7 +485,7 @@ Return ONLY valid YAML, no markdown fences, no explanation."""
 def _fallback_script(datasets: list[dict], output_dir: str) -> str:
     lines = [
         "from datasets import load_dataset",
-        "import os, requests, subprocess",
+        "import os, requests, subprocess, pandas as pd",
         f"os.makedirs('{output_dir}', exist_ok=True)",
         "",
     ]
@@ -493,14 +493,20 @@ def _fallback_script(datasets: list[dict], output_dir: str) -> str:
         src = ds.get("source", "")
         ds_id = ds.get("id", "")
         slug = ds_id.replace("/", "_").replace(":", "_")
+        out = f"{output_dir}/{src}/{slug}"
         url = ds.get("url", "")
         if src == "huggingface":
             lines += [
                 f"print('Downloading {ds_id}...')",
                 f"try:",
+                f"    os.makedirs('{out}', exist_ok=True)",
                 f"    d = load_dataset('{ds_id}')",
-                f"    d.save_to_disk('{output_dir}/{slug}')",
-                f"    print('  ✅ saved to {output_dir}/{slug}')",
+                f"    frames = [d[s].to_pandas() for s in d]",
+                f"    df = pd.concat(frames, ignore_index=True)",
+                f"    df['_source'] = 'huggingface'",
+                f"    df['_dataset_id'] = '{ds_id}'",
+                f"    df.to_parquet('{out}/data.parquet', index=False)",
+                f"    print('  ✅ saved to {out}/data.parquet')",
                 f"except Exception as e:",
                 f"    print(f'  ⚠️  {{e}}')",
                 "",
@@ -508,7 +514,8 @@ def _fallback_script(datasets: list[dict], output_dir: str) -> str:
         elif src == "kaggle":
             lines += [
                 f"print('Downloading {ds_id} via kaggle CLI...')",
-                f"subprocess.run(['kaggle', 'datasets', 'download', '-d', '{ds_id}', '-p', '{output_dir}/kaggle/'], check=False)",
+                f"os.makedirs('{out}', exist_ok=True)",
+                f"subprocess.run(['kaggle', 'datasets', 'download', '-d', '{ds_id}', '-p', '{out}', '--unzip'], check=False)",
                 "",
             ]
         else:
@@ -527,19 +534,40 @@ def generate_download_script(datasets: list[dict], output_dir: str) -> str:
 
 {json.dumps(datasets, indent=2, ensure_ascii=False)}
 
-Requirements:
-- HuggingFace: from datasets import load_dataset; ds.save_to_disk(...)
-- Kaggle: kaggle datasets download -d <id> -p {output_dir}/kaggle/
-- Zenodo: use requests library. EXACT Zenodo API structure:
-  Step 1: GET https://zenodo.org/api/records/<record_id>
-  Step 2: files = response.json()["files"]
-  Step 3: each file: file["key"] = filename, file["links"]["content"] = download URL
-  Step 4: stream download with iter_content(chunk_size=65536)
-  DO NOT use file["name"] or file["links"]["self"] — these fields do not exist
-- UCI / others: requests with streaming
-- Subdirectory per source: {output_dir}/<source>/<slug>/
-- Progress output, error handling per dataset, final summary
-- if __name__ == "__main__": guard
+UNIFIED OUTPUT FORMAT — all datasets must be saved as a single Parquet file per dataset:
+  - Final file path: {output_dir}/<source>/<slug>/data.parquet
+  - Use pandas DataFrame as the unified intermediate format
+  - Add a "_source" column with the source name (e.g. "huggingface", "kaggle", "zenodo")
+  - Add a "_dataset_id" column with the dataset id string
+
+Per-source download + conversion rules:
+
+HuggingFace:
+  - load_dataset(id) → iterate all splits → pd.concat all splits into one DataFrame → save as parquet
+  - Use: ds[split].to_pandas() for each split
+
+Kaggle:
+  - kaggle datasets download -d <id> -p <tmp_dir> --unzip
+  - Find all .csv / .json / .parquet files in tmp_dir
+  - pd.read_csv / pd.read_json / pd.read_parquet → pd.concat → save as parquet
+
+Zenodo (EXACT REST API v2 structure):
+  - Step 1: extract record_id from URL last path segment (e.g. "7734140")
+  - Step 2: GET https://zenodo.org/api/records/<record_id>
+  - Step 3: files = response.json()["files"]
+  - Step 4: filename = file["key"], download_url = file["links"]["self"] + "/content"
+  - Step 5: stream download to tmp file, then read into DataFrame based on extension
+  - IMPORTANT: file["links"]["self"] = "https://zenodo.org/api/records/<id>/files/<key>"
+  - DO NOT use file["links"]["content"] — that key does not exist at record level
+
+UCI / others:
+  - requests streaming download → read into DataFrame → save as parquet
+
+General rules:
+  - import pandas as pd, import pyarrow
+  - Progress output and per-dataset error handling
+  - Final summary: Successful / Failed
+  - if __name__ == "__main__": guard
 
 Return ONLY the Python script, no markdown fences."""
 

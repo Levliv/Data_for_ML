@@ -4,5 +4,6 @@ datasets
 requests
 beautifulsoup4
 pandas
+pyarrow
 pyyaml
 json-repair

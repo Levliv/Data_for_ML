@@ -1,22 +1,22 @@
+avg_relevance_score: 7.2
+last_search: 2026-03-14 21:24:37
 model: gemini-3.1-flash-lite-preview
 monitor_interval: 3600
 output_dir: data/raw
-state_file: known_datasets.json
-topic: programming questions
-last_search: 2026-03-14 21:18:37
-sources_stats:
-  zenodo: 1
-  huggingface: 4
-avg_relevance_score: 8.0
-top_ml_tasks:
-- text-generation
-- question-answering
-- text-classification
-- code-generation
-- information-retrieval
 preferred_sources:
 - huggingface
 - zenodo
 search_limits:
   huggingface: 4
   zenodo: 1
+sources_stats:
+  huggingface: 4
+  zenodo: 1
+state_file: known_datasets.json
+top_ml_tasks:
+- text-generation
+- question-answering
+- text-classification
+- code-generation
+- information-retrieval
+topic: programming questions
