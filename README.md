@@ -1,89 +1,176 @@
-# Dataset Search Agent
+# ML for Data — Dataset Agent
 
-Агент для поиска, оценки и скачивания датасетов по заданной теме.
-Использует Gemini для ранжирования и генерации скриптов скачивания.
+Два агента для сбора и контроля качества данных:
+- **DataCollectionAgent** — поиск, ранжирование и скачивание датасетов
+- **DataQualityAgent** — обнаружение и устранение проблем качества данных
 
 ## Структура
 
 ```
-agents/data_collection_agent.py   — основной агент (DataCollectionAgent + CLI)
-config.yaml                        — конфигурация источников и параметров
-notebooks/eda.ipynb                — EDA и визуализации
-data/raw/                          — собранные датасеты
+agents/
+  data_collection_agent.py  — сбор данных (CLI + API)
+  data_quality_agent.py     — контроль качества (API)
+config.yaml                 — конфигурация (автообновляется после поиска)
+notebooks/
+  eda.ipynb                 — автогенерируется после скачивания
+  data_quality.ipynb        — EDA качества данных (3 части + бонус)
+data/raw/                   — скачанные датасеты в формате Parquet
+requirements.txt
 ```
+
+---
 
 ## Установка
 
 ```bash
-pip install google-genai huggingface_hub datasets requests beautifulsoup4 pandas pyyaml json-repair
+python -m venv .venv
+source .venv/bin/activate
 
-export GEMINI_API_KEY=AIza...
-export KAGGLE_API_TOKEN=KGAT_...   # опционально
+pip install -r requirements.txt
 ```
 
-## Команды
+**Обязательные переменные окружения:**
 
 ```bash
-# Найти датасеты по теме
+export GEMINI_API_KEY=AIza...        # бесплатно: aistudio.google.com/app/apikey
+```
+
+**Опциональные:**
+
+```bash
+export KAGGLE_API_TOKEN=KGAT_...     # поиск на Kaggle
+export TELEGRAM_BOT_TOKEN=...        # уведомления в Telegram (для monitor)
+export TELEGRAM_CHAT_ID=...
+```
+
+---
+
+## Агент 1 — Сбор данных (CLI)
+
+### Поиск и скачивание
+
+```bash
 python agents/data_collection_agent.py search "climate weather"
+```
 
-# Мониторить новые датасеты (каждый час)
-python agents/data_collection_agent.py monitor "climate weather"
+Что произойдёт:
+1. Поиск на HuggingFace, Kaggle, Papers with Code, Zenodo, UCI
+2. Gemini ранжирует и дедуплицирует кандидатов
+3. Выводит список с оценками — выбери номера через запятую, `all` или `q`
+4. Gemini генерирует `download_datasets.py`, запускает его
+5. Данные сохраняются в `data/raw/<source>/<slug>/data.parquet`
+6. Gemini генерирует `notebooks/eda.ipynb`
+7. `config.yaml` обновляется автоматически
 
-# Скачать из сохранённого списка без поиска
+### Скачать из сохранённого списка (без повторного поиска)
+
+```bash
 python agents/data_collection_agent.py download datasets_found.json
 ```
 
-Также работает через старый путь: `python agent.py search "..."`.
-
-## Конфигурация (config.yaml)
-
-```yaml
-topic: "climate weather"        # тема по умолчанию
-output_dir: "data/raw"          # куда сохранять датасеты
-state_file: "known_datasets.json"
-monitor_interval: 3600          # секунды между проверками
-model: "gemini-3.1-flash-lite-preview"
-```
-
-## Как работает search
-
-```
-1. Параллельный поиск на всех источниках
-        HuggingFace Hub API  → до 50
-        Kaggle API           → до 30
-        Papers with Code     → варьируется
-        Zenodo REST API      → до 20
-        UCI ML Repository    → ограничено (JS-рендеринг)
-              ↓
-2. Gemini ранжирует и дедуплицирует (чанки по 50)
-              ↓
-3. Показывает топ-N с оценками и описанием
-              ↓
-4. Пользователь выбирает: 1,3,5 / all / q
-              ↓
-5. Gemini генерирует download_datasets.py
-              ↓
-6. Запускает скрипт → data/raw/<source>/<dataset>/
-```
-
-## Мониторинг с Telegram
+### Мониторинг новых датасетов
 
 ```bash
-export TELEGRAM_BOT_TOKEN=...
-export TELEGRAM_CHAT_ID=...
 python agents/data_collection_agent.py monitor "climate weather"
+# проверяет каждый час, уведомляет в Telegram при появлении новых
 ```
 
-## Выходные файлы
+### Флаги
+
+```bash
+python agents/data_collection_agent.py search "тема" --output-dir data/raw
+```
+
+### Выходные файлы
 
 ```
-datasets_found.json       — все найденные датасеты с оценками
+config.yaml               — обновляется: тема, источники, рекомендованные лимиты
+datasets_found.json       — все найденные датасеты с оценками релевантности
 download_datasets.py      — сгенерированный скрипт скачивания
 
 data/raw/
-  huggingface/<slug>/
-  kaggle/<owner>/<slug>/
-  zenodo/<record-id>/
-  uci/<n>/
+  huggingface/<slug>/data.parquet
+  kaggle/<slug>/data.parquet
+  zenodo/<record-id>/data.parquet
+
+notebooks/eda.ipynb       — автогенерируется Gemini после скачивания
+```
+
+---
+
+## Агент 2 — Качество данных (Python API + ноутбук)
+
+### Запуск ноутбука
+
+```bash
+# Через VSCode: открой notebooks/data_quality.ipynb → Run All
+# Через браузер:
+jupyter notebook notebooks/data_quality.ipynb
+```
+
+Ноутбук работает с файлами из `data/raw/` автоматически.
+
+### Использование агента напрямую
+
+```python
+import pandas as pd
+from agents.data_quality_agent import DataQualityAgent
+
+df = pd.read_parquet('data/raw/huggingface/<slug>/data.parquet')
+agent = DataQualityAgent()
+
+# Шаг 1 — обнаружить проблемы
+report = agent.detect_issues(df)
+print(report)
+# {'missing': {...}, 'duplicates': N, 'outliers': {...}, 'imbalance': {...}}
+
+# Шаг 2 — почистить (выбери стратегию)
+df_clean = agent.fix(df, strategy={
+    'missing':    'median',    # median | mean | mode | drop | ffill | constant:<val>
+    'duplicates': 'drop',      # drop | keep_first | keep_last | none
+    'outliers':   'clip_iqr',  # clip_iqr | clip_zscore | drop | none
+})
+
+# Шаг 3 — сравнить до/после
+comparison = agent.compare(df, df_clean)
+print(comparison)
+
+# Бонус — Gemini объясняет проблемы и рекомендует стратегию
+explanation = agent.explain_with_llm(report, task_description="code generation")
+print(explanation)
+```
+
+### Что делает каждый скилл
+
+| Скилл | Метод | Что обнаруживает / делает |
+|---|---|---|
+| detect | `detect_issues(df)` | пропуски, дубликаты, выбросы (IQR), дисбаланс классов |
+| fix | `fix(df, strategy)` | чистка по выбранной стратегии |
+| compare | `compare(df_before, df_after)` | таблица метрик до/после с % изменением |
+| explain | `explain_with_llm(report, task)` | Gemini объясняет проблемы и рекомендует стратегию |
+
+---
+
+## Полный пайплайн
+
+```bash
+# 1. Найти и скачать датасеты
+python agents/data_collection_agent.py search "programming questions"
+
+# 2. Открыть ноутбук с EDA качества
+jupyter notebook notebooks/data_quality.ipynb
+
+# 3. Или запустить агент качества из Python напрямую
+python - << 'EOF'
+import pandas as pd
+from pathlib import Path
+from agents.data_quality_agent import DataQualityAgent
+
+df = pd.read_parquet(next(Path('data/raw').rglob('data.parquet')))
+agent = DataQualityAgent()
+report = agent.detect_issues(df)
+print(report)
+df_clean = agent.fix(df, strategy={'missing': 'median', 'duplicates': 'drop', 'outliers': 'clip_iqr'})
+agent.compare(df, df_clean)
+EOF
 ```

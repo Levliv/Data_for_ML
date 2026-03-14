@@ -8,3 +8,6 @@ pyarrow
 nbformat
 pyyaml
 json-repair
+scipy
+matplotlib
+seaborn
