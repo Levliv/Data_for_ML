@@ -83,7 +83,8 @@ Output ONLY a valid JSON array, nothing else. No markdown, no explanation.
   }
 ]
 
-Sort by relevance_score descending. Include ALL relevant datasets."""
+Sort by relevance_score descending.
+Include ALL datasets from the input — do not drop any. Assign relevance_score 1-3 to weakly related ones instead of excluding them."""
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -256,13 +257,20 @@ class DataCollectionAgent:
                 rows = []
                 for ds in results:
                     tags = getattr(ds, "tags", []) or []
+                    siblings = getattr(ds, "siblings", []) or []
+                    size_bytes = sum(getattr(s, "size", 0) or 0 for s in siblings)
+                    size_mb = size_bytes / (1024 * 1024)
+                    size_disk = f"{size_mb:.1f} MB" if 0 < size_mb < 1024 else (f"{size_mb/1024:.2f} GB" if size_mb >= 1024 else None)
+                    row_count = next((t.replace("size_categories:", "") for t in tags if "size_categories:" in t), None)
+                    parts = [p for p in [size_disk, row_count] if p]
+                    size_str = " | ".join(parts) if parts else "unknown"
                     rows.append({
                         "id": ds.id,
                         "source": "huggingface",
                         "url": f"https://huggingface.co/datasets/{ds.id}",
                         "downloads": getattr(ds, "downloads", 0) or 0,
                         "likes": getattr(ds, "likes", 0) or 0,
-                        "size_category": next((t.replace("size_categories:", "") for t in tags if "size_categories:" in t), "unknown"),
+                        "size_category": size_str,
                         "license": next((t.replace("license:", "") for t in tags if t.startswith("license:")), "unknown"),
                         "tags": tags,
                     })
@@ -711,6 +719,91 @@ def cmd_monitor(args) -> None:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# EDA
+# ──────────────────────────────────────────────────────────────────────────────
+
+def run_eda(output_dir: str) -> None:
+    """Load all downloaded parquet files, collect stats, ask Gemini to generate EDA notebook."""
+    try:
+        import nbformat
+    except ImportError:
+        print("  ⚠️  nbformat не установлен: pip install nbformat")
+        return
+
+    parquet_files = list(Path(output_dir).rglob("*.parquet"))
+    if not parquet_files:
+        print("  ⚠️  Нет parquet-файлов в data/raw/ для EDA")
+        return
+
+    print(f"\n📊 Генерирую EDA для {len(parquet_files)} датасет(ов)...")
+
+    stats = []
+    for pf in parquet_files:
+        try:
+            df = pd.read_parquet(pf)
+            stats.append({
+                "path": str(pf.relative_to(ROOT)),
+                "shape": list(df.shape),
+                "columns": list(df.columns),
+                "dtypes": {col: str(dt) for col, dt in df.dtypes.items()},
+                "head": df.head(3).fillna("").astype(str).to_dict(orient="records"),
+                "describe": df.describe(include="all").fillna("").astype(str).to_dict(),
+                "missing": {col: int(n) for col, n in df.isnull().sum().items() if n > 0},
+            })
+        except Exception as e:
+            print(f"  ⚠️  {pf.name}: {e}")
+
+    if not stats:
+        return
+
+    prompt = f"""You are a data scientist. Generate a Jupyter notebook for EDA of these datasets.
+
+Dataset statistics:
+{json.dumps(stats, indent=2, ensure_ascii=False)}
+
+Return a JSON array of notebook cells. Each cell:
+{{"cell_type": "markdown" | "code", "source": "cell content as string"}}
+
+Notebook structure:
+1. Markdown: title + dataset overview
+2. Code: imports (pandas, matplotlib, seaborn, pathlib)
+3. For each dataset:
+   a. Markdown: dataset name and path
+   b. Code: df = pd.read_parquet("<path>"); df.shape, df.dtypes, df.head()
+   c. Code: df.describe(include="all")
+   d. Code: missing values heatmap (seaborn.heatmap of df.isnull())
+   e. Code: distribution plots for numeric columns (df.hist())
+   f. Code: value_counts for top-3 categorical columns
+4. Markdown: summary and next steps
+
+Return ONLY the JSON array of cells, no markdown fences."""
+
+    try:
+        raw = call_gemini_plain(prompt)
+        if "```" in raw:
+            import re
+            m = re.search(r"```(?:json)?\n?(.*?)```", raw, re.DOTALL)
+            raw = m.group(1).strip() if m else raw.replace("```", "").strip()
+
+        cells_data = json.loads(raw)
+
+        nb = nbformat.v4.new_notebook()
+        for c in cells_data:
+            if c.get("cell_type") == "markdown":
+                nb.cells.append(nbformat.v4.new_markdown_cell(c["source"]))
+            else:
+                nb.cells.append(nbformat.v4.new_code_cell(c["source"]))
+
+        nb_path = ROOT / "notebooks" / "eda.ipynb"
+        nb_path.parent.mkdir(exist_ok=True)
+        nb_path.write_text(nbformat.writes(nb))
+        print(f"  ✅ notebooks/eda.ipynb ({len(nb.cells)} ячеек)")
+
+    except Exception as e:
+        print(f"  ⚠️  Ошибка генерации EDA: {e}")
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # COMMANDS
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -741,6 +834,7 @@ def cmd_search(args) -> None:
     print("\n  Запустить сейчас? [y/N]: ", end="", flush=True)
     if input().strip().lower() == "y":
         subprocess.run([sys.executable, str(script_path)])
+        run_eda(args.output_dir)
     else:
         print("  Запустите: python download_datasets.py")
 
@@ -755,6 +849,7 @@ def cmd_download(args) -> None:
     script_path = ROOT / "download_datasets.py"
     script_path.write_text(script)
     subprocess.run([sys.executable, str(script_path)])
+    run_eda(OUTPUT_DIR)
 
 
 def main():

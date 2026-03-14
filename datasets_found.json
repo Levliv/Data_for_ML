@@ -6,13 +6,13 @@
     "url": "https://zenodo.org/records/4415593",
     "downloads": 66946,
     "likes": 21206,
-    "size_category": "10G<n<100G",
+    "size_category": "10M<n<100M",
     "license": "cc-by-sa-4.0",
-    "description": "A comprehensive dataset of Stack Overflow posts, including code snippets and text. Ideal for software evolution research and training models on programming Q&A.",
+    "description": "A comprehensive dataset of Stack Overflow posts, including code snippets and text, ideal for software evolution and NLP research. It is highly relevant for analyzing programming questions and answers.",
     "ml_tasks": [
       "text-classification",
-      "code-generation",
-      "information-retrieval"
+      "information-retrieval",
+      "sequence-modeling"
     ],
     "relevance_score": 10
   },
@@ -25,59 +25,355 @@
     "likes": 0,
     "size_category": "10K<n<100K",
     "license": "unknown",
-    "description": "A collection of Python-specific programming questions. Suitable for fine-tuning LLMs on coding interview preparation or language-specific tasks.",
+    "description": "A collection of Python-specific programming questions. Suitable for training models on code generation or question-answering tasks.",
     "ml_tasks": [
       "text-generation",
       "question-answering"
     ],
-    "relevance_score": 8
+    "relevance_score": 9
   },
   {
     "id": "Tapos-Minmoy/python_programming_questions",
-    "name": "Python Programming Questions (Duplicate)",
+    "name": "Python Programming Questions (Tapos-Minmoy)",
     "source": "huggingface",
     "url": "https://huggingface.co/datasets/Tapos-Minmoy/python_programming_questions",
     "downloads": 9,
     "likes": 1,
     "size_category": "10K<n<100K",
     "license": "unknown",
-    "description": "A collection of Python-specific programming questions. Suitable for fine-tuning LLMs on coding interview preparation or language-specific tasks.",
+    "description": "A dataset containing Python programming questions, useful for fine-tuning LLMs on coding tasks.",
     "ml_tasks": [
       "text-generation",
       "question-answering"
     ],
-    "relevance_score": 7
+    "relevance_score": 9
   },
   {
     "id": "RJ1200/Programming_Questions",
-    "name": "Programming Questions",
+    "name": "Programming Questions (RJ1200)",
     "source": "huggingface",
     "url": "https://huggingface.co/datasets/RJ1200/Programming_Questions",
     "downloads": 6,
     "likes": 0,
     "size_category": "unknown",
     "license": "unknown",
-    "description": "A general dataset containing various programming-related questions. Useful for training models on technical Q&A formats.",
+    "description": "A repository of general programming questions. Useful for training models on technical Q&A.",
     "ml_tasks": [
-      "text-generation",
       "question-answering"
     ],
-    "relevance_score": 6
+    "relevance_score": 8
   },
   {
     "id": "RJ1200/Programming-Questions",
-    "name": "Programming Questions (Duplicate)",
+    "name": "Programming-Questions (RJ1200 Duplicate)",
     "source": "huggingface",
     "url": "https://huggingface.co/datasets/RJ1200/Programming-Questions",
     "downloads": 5,
     "likes": 0,
     "size_category": "unknown",
     "license": "unknown",
-    "description": "A general dataset containing various programming-related questions. Useful for training models on technical Q&A formats.",
+    "description": "A duplicate repository of general programming questions. Useful for training models on technical Q&A.",
     "ml_tasks": [
-      "text-generation",
       "question-answering"
     ],
-    "relevance_score": 5
+    "relevance_score": 8
+  },
+  {
+    "id": "zenodo:10030647",
+    "name": "Corpus of Decisions: International Court of Justice (CD-ICJ)",
+    "source": "zenodo",
+    "url": "https://zenodo.org/records/10030647",
+    "downloads": 49872,
+    "likes": 18258,
+    "size_category": "10M<n<100M",
+    "license": "cc-zero",
+    "description": "A legal corpus containing decisions and opinions. While focused on law, it includes R programming language data and NLP resources.",
+    "ml_tasks": [
+      "text-mining",
+      "natural-language-processing"
+    ],
+    "relevance_score": 2
+  },
+  {
+    "id": "zenodo:15689391",
+    "name": "EXIOBASE 3",
+    "source": "zenodo",
+    "url": "https://zenodo.org/records/15689391",
+    "downloads": 466090,
+    "likes": 357452,
+    "size_category": "10M<n<100M",
+    "license": "unknown",
+    "description": "Environmental-economic accounting data. Not related to programming questions.",
+    "ml_tasks": [
+      "regression",
+      "forecasting"
+    ],
+    "relevance_score": 1
+  },
+  {
+    "id": "zenodo:8214871",
+    "name": "SinoLC-1",
+    "source": "zenodo",
+    "url": "https://zenodo.org/records/8214871",
+    "downloads": 539542,
+    "likes": 246354,
+    "size_category": "1M<n<10M",
+    "license": "cc-by-4.0",
+    "description": "High-resolution land-cover map of China. Not related to programming questions.",
+    "ml_tasks": [
+      "image-segmentation",
+      "classification"
+    ],
+    "relevance_score": 1
+  },
+  {
+    "id": "zenodo:11461587",
+    "name": "Reliance on Science",
+    "source": "zenodo",
+    "url": "https://zenodo.org/records/11461587",
+    "downloads": 137259,
+    "likes": 89131,
+    "size_category": "1M<n<10M",
+    "license": "cc-by-nc-4.0",
+    "description": "Patent-to-paper citation data. Not related to programming questions.",
+    "ml_tasks": [
+      "link-prediction",
+      "graph-analysis"
+    ],
+    "relevance_score": 1
+  },
+  {
+    "id": "zenodo:4060432",
+    "name": "FSD50K",
+    "source": "zenodo",
+    "url": "https://zenodo.org/records/4060432",
+    "downloads": 188732,
+    "likes": 69367,
+    "size_category": "10M<n<100M",
+    "license": "other-at",
+    "description": "Audio dataset for sound event recognition. Not related to programming questions.",
+    "ml_tasks": [
+      "audio-classification",
+      "sound-event-detection"
+    ],
+    "relevance_score": 1
+  },
+  {
+    "id": "zenodo:18135819",
+    "name": "Mammal Diversity Database",
+    "source": "zenodo",
+    "url": "https://zenodo.org/records/18135819",
+    "downloads": 44179,
+    "likes": 62611,
+    "size_category": "1M<n<10M",
+    "license": "cc-by-4.0",
+    "description": "Taxonomic database for mammals. Not related to programming questions.",
+    "ml_tasks": [
+      "classification"
+    ],
+    "relevance_score": 1
+  },
+  {
+    "id": "zenodo:17090760",
+    "name": "The PRIMAP-hist national historical emissions time series",
+    "source": "zenodo",
+    "url": "https://zenodo.org/records/17090760",
+    "downloads": 75176,
+    "likes": 62310,
+    "size_category": "1M<n<10M",
+    "license": "cc-by-nc-sa-4.0",
+    "description": "Historical emissions data. Not related to programming questions.",
+    "ml_tasks": [
+      "time-series-forecasting"
+    ],
+    "relevance_score": 1
+  },
+  {
+    "id": "zenodo:3459420",
+    "name": "A global network of biomedical relationships derived from text",
+    "source": "zenodo",
+    "url": "https://zenodo.org/records/3459420",
+    "downloads": 49818,
+    "likes": 35907,
+    "size_category": "1M<n<10M",
+    "license": "cc-by-4.0",
+    "description": "Biomedical relationship networks from PubMed. Not related to programming questions.",
+    "ml_tasks": [
+      "relation-extraction",
+      "unsupervised-learning"
+    ],
+    "relevance_score": 1
+  },
+  {
+    "id": "zenodo:4940267",
+    "name": "A dataset of neonatal EEG recordings with seizures annotations",
+    "source": "zenodo",
+    "url": "https://zenodo.org/records/4940267",
+    "downloads": 289496,
+    "likes": 33914,
+    "size_category": "1M<n<10M",
+    "license": "cc-by-4.0",
+    "description": "EEG recordings for seizure detection. Not related to programming questions.",
+    "ml_tasks": [
+      "time-series-classification",
+      "anomaly-detection"
+    ],
+    "relevance_score": 1
+  },
+  {
+    "id": "zenodo:3866179",
+    "name": "Academic Motivation Scale (AMS) Intrinsic Motivation (IM) Questionnaire and Data",
+    "source": "zenodo",
+    "url": "https://zenodo.org/records/3866179",
+    "downloads": 25890,
+    "likes": 32470,
+    "size_category": "1M<n<10M",
+    "license": "cc-by-4.0",
+    "description": "Survey data on student motivation. Not related to programming questions.",
+    "ml_tasks": [
+      "classification",
+      "clustering"
+    ],
+    "relevance_score": 1
+  },
+  {
+    "id": "zenodo:12698637",
+    "name": "GLOBMAP global Leaf Area Index since 1981",
+    "source": "zenodo",
+    "url": "https://zenodo.org/records/12698637",
+    "downloads": 37501,
+    "likes": 30761,
+    "size_category": "1M<n<10M",
+    "license": "cc-by-4.0",
+    "description": "Global Leaf Area Index data. Not related to programming questions.",
+    "ml_tasks": [
+      "regression"
+    ],
+    "relevance_score": 1
+  },
+  {
+    "id": "zenodo:18953516",
+    "name": "Commodity-driven deforestation, associated carbon emissions and trade 2001-2023",
+    "source": "zenodo",
+    "url": "https://zenodo.org/records/18953516",
+    "downloads": 8471,
+    "likes": 28547,
+    "size_category": "1M<n<10M",
+    "license": "cc-by-4.0",
+    "description": "Deforestation and carbon emission data. Not related to programming questions.",
+    "ml_tasks": [
+      "regression"
+    ],
+    "relevance_score": 1
+  },
+  {
+    "id": "zenodo:53169",
+    "name": "Collection of textures in colorectal cancer histology",
+    "source": "zenodo",
+    "url": "https://zenodo.org/records/53169",
+    "downloads": 53560,
+    "likes": 29005,
+    "size_category": "1M<n<10M",
+    "license": "cc-by-4.0",
+    "description": "Histological texture images. Not related to programming questions.",
+    "ml_tasks": [
+      "image-classification",
+      "texture-analysis"
+    ],
+    "relevance_score": 1
+  },
+  {
+    "id": "zenodo:3931963",
+    "name": "K-EmoCon, a multimodal sensor dataset for continuous emotion recognition",
+    "source": "zenodo",
+    "url": "https://zenodo.org/records/3931963",
+    "downloads": 5716,
+    "likes": 28922,
+    "size_category": "1M<n<10M",
+    "license": "unknown",
+    "description": "Multimodal sensor data for emotion recognition. Not related to programming questions.",
+    "ml_tasks": [
+      "emotion-recognition",
+      "time-series-analysis"
+    ],
+    "relevance_score": 1
+  },
+  {
+    "id": "zenodo:2552860",
+    "name": "FSDKaggle2018",
+    "source": "zenodo",
+    "url": "https://zenodo.org/records/2552860",
+    "downloads": 58594,
+    "likes": 26572,
+    "size_category": "1M<n<10M",
+    "license": "other-at",
+    "description": "Audio tagging dataset. Not related to programming questions.",
+    "ml_tasks": [
+      "audio-classification"
+    ],
+    "relevance_score": 1
+  },
+  {
+    "id": "zenodo:16807551",
+    "name": "Kelmarsh wind farm data",
+    "source": "zenodo",
+    "url": "https://zenodo.org/records/16807551",
+    "downloads": 35470,
+    "likes": 22173,
+    "size_category": "1M<n<10M",
+    "license": "cc-by-4.0",
+    "description": "SCADA data for wind turbines. Not related to programming questions.",
+    "ml_tasks": [
+      "forecasting",
+      "regression"
+    ],
+    "relevance_score": 1
+  },
+  {
+    "id": "zenodo:4004271",
+    "name": "Auditory Attention Detection Dataset KULeuven",
+    "source": "zenodo",
+    "url": "https://zenodo.org/records/4004271",
+    "downloads": 47206,
+    "likes": 20824,
+    "size_category": "1M<n<10M",
+    "license": "cc-by-nc-sa-4.0",
+    "description": "EEG data for auditory attention detection. Not related to programming questions.",
+    "ml_tasks": [
+      "classification",
+      "signal-processing"
+    ],
+    "relevance_score": 1
+  },
+  {
+    "id": "zenodo:1251813",
+    "name": "Summary-level data from meta-analysis of fat distribution phenotypes",
+    "source": "zenodo",
+    "url": "https://zenodo.org/records/1251813",
+    "downloads": 20662,
+    "likes": 19779,
+    "size_category": "1M<n<10M",
+    "license": "cc-by-4.0",
+    "description": "Genomic meta-analysis data. Not related to programming questions.",
+    "ml_tasks": [
+      "regression"
+    ],
+    "relevance_score": 1
+  },
+  {
+    "id": "zenodo:3765872",
+    "name": "NEON Tree Crowns Dataset",
+    "source": "zenodo",
+    "url": "https://zenodo.org/records/3765872",
+    "downloads": 45896,
+    "likes": 20100,
+    "size_category": "10M<n<100M",
+    "license": "cc-by-4.0",
+    "description": "LiDAR and remote sensing data for tree crown detection. Not related to programming questions.",
+    "ml_tasks": [
+      "object-detection",
+      "segmentation"
+    ],
+    "relevance_score": 1
   }
 ]
