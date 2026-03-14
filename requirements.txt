@@ -1,0 +1,8 @@
+google-genai
+huggingface_hub
+datasets
+requests
+beautifulsoup4
+pandas
+pyyaml
+json-repair

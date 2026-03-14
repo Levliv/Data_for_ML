@@ -1,0 +1,83 @@
+[
+  {
+    "id": "zenodo:4415593",
+    "name": "SOTorrent Dataset",
+    "source": "zenodo",
+    "url": "https://zenodo.org/records/4415593",
+    "downloads": 66946,
+    "likes": 21206,
+    "size_category": "10G<n<100G",
+    "license": "cc-by-sa-4.0",
+    "description": "A comprehensive dataset of Stack Overflow posts, including code snippets and text. Ideal for software evolution research and training models on programming Q&A.",
+    "ml_tasks": [
+      "text-classification",
+      "code-generation",
+      "information-retrieval"
+    ],
+    "relevance_score": 10
+  },
+  {
+    "id": "maniteja7463/python_programming_questions",
+    "name": "Python Programming Questions",
+    "source": "huggingface",
+    "url": "https://huggingface.co/datasets/maniteja7463/python_programming_questions",
+    "downloads": 18,
+    "likes": 0,
+    "size_category": "10K<n<100K",
+    "license": "unknown",
+    "description": "A collection of Python-specific programming questions. Suitable for fine-tuning LLMs on coding interview preparation or language-specific tasks.",
+    "ml_tasks": [
+      "text-generation",
+      "question-answering"
+    ],
+    "relevance_score": 8
+  },
+  {
+    "id": "Tapos-Minmoy/python_programming_questions",
+    "name": "Python Programming Questions (Duplicate)",
+    "source": "huggingface",
+    "url": "https://huggingface.co/datasets/Tapos-Minmoy/python_programming_questions",
+    "downloads": 9,
+    "likes": 1,
+    "size_category": "10K<n<100K",
+    "license": "unknown",
+    "description": "A collection of Python-specific programming questions. Suitable for fine-tuning LLMs on coding interview preparation or language-specific tasks.",
+    "ml_tasks": [
+      "text-generation",
+      "question-answering"
+    ],
+    "relevance_score": 8
+  },
+  {
+    "id": "RJ1200/Programming_Questions",
+    "name": "Programming Questions",
+    "source": "huggingface",
+    "url": "https://huggingface.co/datasets/RJ1200/Programming_Questions",
+    "downloads": 6,
+    "likes": 0,
+    "size_category": "unknown",
+    "license": "unknown",
+    "description": "A general repository of programming-related questions. Useful for training models on technical problem-solving and coding logic.",
+    "ml_tasks": [
+      "text-generation",
+      "question-answering"
+    ],
+    "relevance_score": 7
+  },
+  {
+    "id": "RJ1200/Programming-Questions",
+    "name": "Programming Questions (Duplicate)",
+    "source": "huggingface",
+    "url": "https://huggingface.co/datasets/RJ1200/Programming-Questions",
+    "downloads": 5,
+    "likes": 0,
+    "size_category": "unknown",
+    "license": "unknown",
+    "description": "A general repository of programming-related questions. Useful for training models on technical problem-solving and coding logic.",
+    "ml_tasks": [
+      "text-generation",
+      "question-answering"
+    ],
+    "relevance_score": 7
+  }
+]
