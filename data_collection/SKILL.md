@@ -1,58 +1,98 @@
 # DataCollectionAgent
 
-Поиск, ранжирование и скачивание датасетов. Gemini ранжирует кандидатов, генерирует скрипт скачивания и EDA-ноутбук. `config.yaml` обновляется автоматически после каждого поиска.
+Поиск, ранжирование и скачивание датасетов из нескольких источников. Gemini выбирает источники под тему, расширяет поисковые запросы, ранжирует кандидатов, генерирует скрипты скачивания и унификации, запускает EDA.
 
 ## Скиллы
 
 | Скилл | Сигнатура | Описание |
 |---|---|---|
-| scrape | `scrape(url, selector)` -> DataFrame | Скрапинг веб-страниц через CSS-селектор (UCI, Google Dataset Search) |
-| fetch_api | `fetch_api(endpoint, params)` -> DataFrame | REST API (Papers with Code, Zenodo) |
-| load_dataset | `load_dataset(query, source='hf'|'kaggle')` -> DataFrame | SDK платформ — HuggingFace Hub и Kaggle |
-| merge | `merge(sources: list[DataFrame])` -> DataFrame | pd.concat всех источников |
+| fetch_api | `fetch_api(endpoint, params, source)` -> DataFrame | REST API (Zenodo) |
+| load_dataset | `load_dataset(query, source, limit, extra_terms)` -> DataFrame | HuggingFace Hub и Kaggle; поиск по нескольким синонимам с дедупликацией |
+| fetch_generic | `fetch_generic(source, query)` -> DataFrame | Любой JSON API, предложенный Gemini |
+| merge | `merge(sources)` -> DataFrame | pd.concat всех источников |
 
 ## CLI
 
 ```bash
-# Поиск + скачивание (интерактивный выбор)
-python agents/data_collection/data_collection_agent.py search "climate weather"
+# Поиск + скачивание (интерактивный выбор датасетов)
+python agent.py search "toxic comment"
 
 # Скачать из сохранённого списка без повторного поиска
-python agents/data_collection/data_collection_agent.py download datasets_found.json
+python agent.py download datasets_found.json
+
+# Превью скачанных данных
+python agent.py preview toxic_comment -n 10
 ```
 
 ## Пайплайн search
 
 ```
-HuggingFace + Kaggle + Papers with Code + Zenodo + UCI + Google
+Gemini думает: какие источники подходят для темы
     |
-Gemini: ранжирует, дедуплицирует, выставляет relevance_score 1-10
+Gemini расширяет запрос: 5-7 синонимов для HuggingFace
+    |
+HuggingFace (по каждому синониму, дедупликация) + Kaggle + Zenodo + доп. API
+    |
+Gemini ранжирует: relevance_score >= 4, нерелевантные отбрасываются
     |
 Пользователь выбирает: 1,3,5 / all / q
     |
-Gemini генерирует download_datasets.py
+Gemini генерирует download_datasets.py  ->  <topic>/data/raw/<name>.parquet
     |
-Данные -> data/raw/<source>/<slug>/data.parquet
+Gemini генерирует unify_template.py     ->  <name>_unified.parquet + combined.parquet
     |
-Gemini генерирует notebooks/eda.ipynb
+preview первых N строк combined.parquet
     |
-config.yaml обновляется: тема, источники, лимиты, last_search
+EDA: 5 примеров -> Gemini пишет ноутбук -> exec() на всех данных -> вывод в CLI
+    |
+config.yaml обновляется: тема, источники, last_search
 ```
 
-## Выходные файлы
+## Структура папок
 
 ```
-config.yaml                              - автообновляется после поиска
-datasets_found.json                      - все кандидаты с оценками
-download_datasets.py                     - сгенерированный скрипт
-data/raw/<source>/<slug>/data.parquet    - данные в едином формате
-notebooks/eda.ipynb                      - автогенерируется Gemini
+<topic>/                              <- папка темы в корне проекта
+├── data/
+│   └── raw/
+│       ├── dataset1.parquet              <- сырые данные
+│       ├── dataset1_unified.parquet      <- единая схема
+│       ├── dataset2.parquet
+│       ├── dataset2_unified.parquet
+│       └── combined.parquet              <- итоговый объединённый датасет
+├── notebooks/
+│   ├── eda.ipynb                         <- автогенерируется Gemini
+│   └── plots/plot_01.png ...             <- графики из EDA
+├── download_datasets.py                  <- сгенерирован Gemini
+├── unify_template.py                     <- сгенерирован Gemini
+├── datasets_found.json                   <- все кандидаты с оценками
+└── config.yaml                           <- автообновляется после поиска
 ```
 
 ## Формат данных
 
 Все источники сохраняются в единый Parquet со служебными колонками:
-- `_source` - источник (`huggingface`, `kaggle`, `zenodo`, ...)
-- `_dataset_id` - идентификатор датасета
+- `_source` — источник (`huggingface`, `kaggle`, `zenodo`, ...)
+- `_dataset_id` — идентификатор датасета
 
-Для HuggingFace показывается реальный размер файлов в MB/GB + количество строк.
+Preview и EDA работают только с `combined.parquet`.
+
+## EDA (data_collection/eda.py)
+
+```bash
+python data_collection/eda.py toxic_comment "toxic comment classification"
+```
+
+1. Берёт 5 строк из `combined.parquet` (без `_source`, `_dataset_id`)
+2. Отправляет Gemini: тема + схема + примеры
+3. Gemini сам решает что считать и пишет ноутбук
+4. Ноутбук выполняется через `exec()` на всех данных
+5. Все `print()` и markdown-ячейки выводятся в CLI
+
+## Env vars
+
+```
+GEMINI_API_KEY    обязательно — aistudio.google.com
+KAGGLE_USERNAME   опционально
+KAGGLE_KEY        опционально
+KAGGLE_API_TOKEN  опционально (альтернатива username+key)
+```
