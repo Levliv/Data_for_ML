@@ -2,7 +2,7 @@ avg_relevance_score: 2.7
 last_search: 2026-03-14 21:45:18
 model: gemini-3.1-flash-lite-preview
 monitor_interval: 3600
-output_dir: data/raw
+output_dir: .
 preferred_sources:
 - zenodo
 - huggingface

@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-DataQualityAgent — Data Detective
+DataQualityAgent - Data Detective
 
 Detects and fixes data quality issues:
 missing values, duplicates, outliers, class imbalance.
 
 Usage:
-    from agents.data_quality_agent import DataQualityAgent
+    from data_quality.data_quality_agent import DataQualityAgent
 
     agent = DataQualityAgent()
     report = agent.detect_issues(df)
@@ -20,21 +20,23 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass, asdict
+from dotenv import load_dotenv
+load_dotenv()
 from typing import Any
 
 import numpy as np
 import pandas as pd
 
 
-# ──────────────────────────────────────────────────────────────────────────────
+# ------------------------------------------------------------------------------
 # REPORT TYPES
-# ──────────────────────────────────────────────────────────────────────────────
+# ------------------------------------------------------------------------------
 
 @dataclass
 class QualityReport:
-    missing: dict[str, dict]       # col → {count, pct}
+    missing: dict[str, dict]       # col -> {count, pct}
     duplicates: int
-    outliers: dict[str, dict]      # col → {count, pct, lower_bound, upper_bound}
+    outliers: dict[str, dict]      # col -> {count, pct, lower_bound, upper_bound}
     imbalance: dict[str, Any]      # {col, counts, ratio}
     summary: dict[str, int]
 
@@ -43,26 +45,26 @@ class QualityReport:
 
     def __str__(self) -> str:
         lines = [
-            "═" * 60,
+            "=" * 60,
             "  QUALITY REPORT",
-            "═" * 60,
+            "=" * 60,
             f"  Пропуски:      {self.summary['missing_cells']} ячеек в {self.summary['missing_cols']} колонках",
             f"  Дубликаты:     {self.duplicates} строк",
             f"  Выбросы:       {self.summary['outlier_cells']} значений в {self.summary['outlier_cols']} колонках",
         ]
         if self.imbalance:
             lines.append(f"  Дисбаланс:     ratio {self.imbalance.get('ratio', '?')} (max/min класс)")
-        lines.append("═" * 60)
+        lines.append("=" * 60)
         return "\n".join(lines)
 
 
-# ──────────────────────────────────────────────────────────────────────────────
+# ------------------------------------------------------------------------------
 # AGENT
-# ──────────────────────────────────────────────────────────────────────────────
+# ------------------------------------------------------------------------------
 
 class DataQualityAgent:
 
-    # ── skill 1: detect ───────────────────────────────────────────────────────
+    # -- skill 1: detect --
 
     def detect_issues(self, df: pd.DataFrame, label_col: str | None = None) -> QualityReport:
         """Detect missing values, duplicates, outliers and class imbalance."""
@@ -134,7 +136,7 @@ class DataQualityAgent:
         ratio = round(max(values) / min(values), 2) if min(values) > 0 else float("inf")
         return {"col": label_col, "counts": counts, "ratio": ratio}
 
-    # ── skill 2: fix ──────────────────────────────────────────────────────────
+    # -- skill 2: fix --
 
     def fix(self, df: pd.DataFrame, strategy: dict) -> pd.DataFrame:
         """
@@ -202,7 +204,7 @@ class DataQualityAgent:
                 df = df[mask | df[col].isna()]
         return df
 
-    # ── skill 3: compare ──────────────────────────────────────────────────────
+    # -- skill 3: compare --
 
     def compare(self, df_before: pd.DataFrame, df_after: pd.DataFrame) -> pd.DataFrame:
         """Return a before/after comparison table for all quality metrics."""
@@ -228,12 +230,12 @@ class DataQualityAgent:
         records = []
         for metric, before, after in rows:
             delta = after - before
-            pct   = f"{delta / before * 100:+.1f}%" if before != 0 else "—"
+            pct   = f"{delta / before * 100:+.1f}%" if before != 0 else "n/a"
             records.append({"Метрика": metric, "До": before, "После": after, "Дельта": delta, "% изменение": pct})
 
         return pd.DataFrame(records).set_index("Метрика")
 
-    # ── bonus: LLM explain ────────────────────────────────────────────────────
+    # -- bonus: LLM explain --
 
     def explain_with_llm(self, report: QualityReport, task_description: str) -> str:
         """Use Gemini to explain issues and recommend cleaning strategy."""
@@ -241,11 +243,11 @@ class DataQualityAgent:
 
         api_key = os.getenv("GEMINI_API_KEY", "")
         if not api_key:
-            return "⚠️  Нет GEMINI_API_KEY: export GEMINI_API_KEY=AIza..."
+            return "[!] Нет GEMINI_API_KEY: export GEMINI_API_KEY=AIza..."
 
         client = genai.Client(api_key=api_key)
 
-        prompt = f"""Ты — эксперт по качеству данных. Проанализируй отчёт и дай рекомендации.
+        prompt = f"""Ты - эксперт по качеству данных. Проанализируй отчёт и дай рекомендации.
 
 ML-задача: {task_description}
 
@@ -253,9 +255,9 @@ ML-задача: {task_description}
 {json.dumps(report.to_dict(), indent=2, ensure_ascii=False)}
 
 Ответь по структуре:
-1. **Найденные проблемы** — объясни каждую проблему и её влияние на ML-задачу
-2. **Рекомендуемая стратегия** — dict для метода fix() с обоснованием каждого выбора
-3. **Критические vs минорные** — что нужно исправить обязательно, а что опционально
+1. **Найденные проблемы** - объясни каждую проблему и её влияние на ML-задачу
+2. **Рекомендуемая стратегия** - dict для метода fix() с обоснованием каждого выбора
+3. **Критические vs минорные** - что нужно исправить обязательно, а что опционально
 
 Будь конкретен и практичен. Ответ на русском."""
 
@@ -266,23 +268,23 @@ ML-задача: {task_description}
         return response.text.strip()
 
 
-# ──────────────────────────────────────────────────────────────────────────────
+# ------------------------------------------------------------------------------
 # CLI
-# ──────────────────────────────────────────────────────────────────────────────
+# ------------------------------------------------------------------------------
 
 def main():
     import argparse
     from pathlib import Path
 
     parser = argparse.ArgumentParser(
-        description="DataQualityAgent — обнаружение и устранение проблем качества данных",
+        description="DataQualityAgent - обнаружение и устранение проблем качества данных",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Примеры:
-  python agents/data_quality_agent.py                          # все файлы из data/raw/
-  python agents/data_quality_agent.py data/raw/huggingface/slug/data.parquet
-  python agents/data_quality_agent.py data.parquet --strategy median --outliers clip_iqr
-  python agents/data_quality_agent.py data.parquet --explain --task "классификация текста"
+  python data_quality/data_quality_agent.py                          # все parquet из папок тем
+  python data_quality/data_quality_agent.py toxic_comment/data/huggingface/slug/data.parquet
+  python data_quality/data_quality_agent.py data.parquet --strategy median --outliers clip_iqr
+  python data_quality/data_quality_agent.py data.parquet --explain --task "классификация текста"
         """
     )
     parser.add_argument("file",            nargs="?", default=None, help="Путь к parquet-файлу (default: все файлы из data/raw/)")
@@ -295,26 +297,26 @@ def main():
     parser.add_argument("--output",        default=None,       help="Куда сохранить очищенный файл (default: <file>_clean.parquet)")
     args = parser.parse_args()
 
-    data_raw = Path(__file__).parent.parent / "data" / "raw"
+    root = Path(__file__).parent.parent
     if args.file is None:
-        paths = list(data_raw.rglob("*.parquet"))
+        paths = list(root.rglob("*/data/*.parquet"))
         if not paths:
-            print(f"❌ Нет parquet-файлов в {data_raw}")
+            print(f"[!] Нет parquet-файлов в папках тем")
             raise SystemExit(1)
-        print(f"📁 data/raw/ — найдено файлов: {len(paths)}")
+        print(f"Найдено файлов: {len(paths)}")
         for i, p in enumerate(paths, 1):
-            print(f"   [{i}] {p.relative_to(data_raw)}")
+            print(f"   [{i}] {p.relative_to(root)}")
         print()
     else:
         path = Path(args.file)
         if not path.exists():
-            print(f"❌ Файл не найден: {path}")
+            print(f"[!] Файл не найден: {path}")
             raise SystemExit(1)
         paths = [path]
 
     dfs = []
     for p in paths:
-        print(f"📂 Загружаю: {p}")
+        print(f"Загружаю: {p}")
         dfs.append(pd.read_parquet(p))
 
     df = pd.concat(dfs, ignore_index=True) if len(dfs) > 1 else dfs[0]
@@ -328,7 +330,7 @@ def main():
 
     # explain (optional)
     if args.explain:
-        print("\n🤖 Gemini анализирует...\n")
+        print("\nGemini анализирует...\n")
         print(agent.explain_with_llm(report, args.task))
 
     # fix
@@ -337,11 +339,11 @@ def main():
         "duplicates": args.duplicates,
         "outliers":   args.outliers,
     }
-    print(f"\n🔧 Применяю стратегию: {strategy}")
+    print(f"\nПрименяю стратегию: {strategy}")
     df_clean = agent.fix(df, strategy=strategy)
 
     # compare
-    print("\n📊 Сравнение до/после:")
+    print("\nСравнение до/после:")
     print(agent.compare(df, df_clean).to_string())
 
     # save
@@ -353,7 +355,7 @@ def main():
         out = data_clean / rel
     out.parent.mkdir(parents=True, exist_ok=True)
     df_clean.to_parquet(out, index=False)
-    print(f"\n✅ Сохранено: {out}  {df_clean.shape}")
+    print(f"\nСохранено: {out}  {df_clean.shape}")
 
 
 if __name__ == "__main__":
