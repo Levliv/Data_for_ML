@@ -6,6 +6,7 @@ beautifulsoup4
 pandas
 pyarrow
 nbformat
+nbconvert
 pyyaml
 json-repair
 python-dotenv

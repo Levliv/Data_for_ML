@@ -8,13 +8,12 @@ Commands:
   python agents/data_collection_agent.py download datasets_found.json
 """
 
-import json, sys, time, argparse, subprocess, hashlib, requests, os, re
+import json, sys, time, argparse, subprocess, requests, os, re
 import yaml, pandas as pd
 from collections import Counter
 from datetime import datetime
 from pathlib import Path
 from dotenv import load_dotenv
-from bs4 import BeautifulSoup
 from huggingface_hub import list_datasets
 from google import genai
 from google.genai import types
@@ -64,7 +63,7 @@ Output ONLY a valid JSON array, nothing else. No markdown, no explanation.
 ]
 
 Sort by relevance_score descending.
-Include ALL datasets from the input - do not drop any. Assign relevance_score 1-3 to weakly related ones instead of excluding them."""
+Drop datasets with relevance_score below 4 — do not include irrelevant results."""
 
 
 def _gemini(prompt: str, system: bool = True, retries: int = 3) -> str:
@@ -95,59 +94,25 @@ def _strip_fences(text: str) -> str:
 
 class DataCollectionAgent:
 
-    def scrape(self, url: str, selector: str, params: dict = None, source: str = "") -> pd.DataFrame:
-        print(f"  [{source} scrape]", end=" ", flush=True)
-        try:
-            soup = BeautifulSoup(
-                requests.get(url, params=params, timeout=15,
-                             headers={"User-Agent": "Mozilla/5.0 (dataset-search-agent)"}).text,
-                "html.parser",
-            )
-            rows = []
-            if selector.startswith("script"):
-                for script in soup.find_all("script", type="application/ld+json"):
-                    try:
-                        data = json.loads(script.string or "")
-                        if isinstance(data, dict) and data.get("@type") == "Dataset":
-                            rows.append({
-                                "id": f"google:{hashlib.md5(data.get('name','').encode()).hexdigest()[:8]}",
-                                "source": "google", "url": data.get("url", ""),
-                                "downloads": 0, "likes": 0, "size_category": "unknown",
-                                "license": str(data.get("license", "unknown")),
-                                "name": data.get("name", ""),
-                                "description_raw": str(data.get("description", ""))[:200], "tags": [],
-                            })
-                    except Exception:
-                        pass
-            else:
-                for link in soup.select(selector)[:20]:
-                    name, href = link.get_text(strip=True), link.get("href", "")
-                    if name and href:
-                        rows.append({
-                            "id": f"uci:{href.split('/')[-1]}", "source": "uci",
-                            "url": f"https://archive.ics.uci.edu{href}" if href.startswith("/") else href,
-                            "downloads": 0, "likes": 0, "size_category": "unknown",
-                            "license": "open", "name": name, "tags": [],
-                        })
-            print(f"-> {len(rows)}")
-            return pd.DataFrame(rows)
-        except Exception as e:
-            print(f"[!] {e}")
-            return pd.DataFrame()
-
     def fetch_api(self, endpoint: str, params: dict, source: str = "") -> pd.DataFrame:
-        _labels = {"paperswithcode": "Papers with Code API", "zenodo": "Zenodo scrape"}
+        _labels = {"zenodo": "Zenodo API", "uci": "UCI ML Repository API"}
         print(f"  [{_labels.get(source, source or endpoint)}]", end=" ", flush=True)
         try:
             data = requests.get(endpoint, params=params, timeout=15).json()
             rows = []
-            if source == "paperswithcode":
-                for ds in data.get("results", []):
+            if source == "uci":
+                for ds in (data.get("datasets") or data if isinstance(data, list) else []):
+                    ds_id = ds.get("id", ds.get("ucimlId", ""))
                     rows.append({
-                        "id": ds.get("url", ds.get("name", "")), "source": "paperswithcode",
-                        "url": "https://paperswithcode.com" + ds.get("url", ""),
-                        "downloads": 0, "likes": 0, "size_category": "unknown", "license": "unknown",
-                        "name": ds.get("name", ""), "description_raw": (ds.get("description") or "")[:200], "tags": [],
+                        "id": f"uci:{ds_id}", "source": "uci",
+                        "url": f"https://archive.ics.uci.edu/dataset/{ds_id}",
+                        "downloads": ds.get("numHits", 0),
+                        "likes": 0,
+                        "size_category": f"{ds.get('numInstances', '?')} rows",
+                        "license": ds.get("license", "unknown"),
+                        "name": ds.get("name", ""),
+                        "description_raw": (ds.get("abstract") or "")[:200],
+                        "tags": ds.get("tasks", []),
                     })
             elif source == "zenodo":
                 for rec in data.get("hits", {}).get("hits", []):
@@ -170,32 +135,40 @@ class DataCollectionAgent:
             print(f"[!] {e}")
             return pd.DataFrame()
 
-    def load_dataset(self, query: str, source: str = "hf", limit: int = 50) -> pd.DataFrame:
+    def load_dataset(self, query: str, source: str = "hf", limit: int = 50,
+                     extra_terms: list[str] = None) -> pd.DataFrame:
         if source == "hf":
-            print("  [HuggingFace Hub API]", end=" ", flush=True)
-            try:
-                rows = []
-                for ds in list_datasets(search=query, limit=limit, sort="downloads", full=True):
-                    tags = getattr(ds, "tags", []) or []
-                    size_bytes = sum(getattr(s, "size", 0) or 0 for s in (getattr(ds, "siblings", []) or []))
-                    size_mb = size_bytes / (1024 * 1024)
-                    size_disk = f"{size_mb:.1f} MB" if 0 < size_mb < 1024 else (f"{size_mb/1024:.2f} GB" if size_mb >= 1024 else None)
-                    row_count = next((t.replace("size_categories:", "") for t in tags if "size_categories:" in t), None)
-                    parts = [p for p in [size_disk, row_count] if p]
-                    rows.append({
-                        "id": ds.id, "source": "huggingface",
-                        "url": f"https://huggingface.co/datasets/{ds.id}",
-                        "downloads": getattr(ds, "downloads", 0) or 0,
-                        "likes": getattr(ds, "likes", 0) or 0,
-                        "size_category": " | ".join(parts) if parts else "unknown",
-                        "license": next((t.replace("license:", "") for t in tags if t.startswith("license:")), "unknown"),
-                        "tags": tags,
-                    })
-                print(f"-> {len(rows)}")
-                return pd.DataFrame(rows)
-            except Exception as e:
-                print(f"[!] {e}")
-                return pd.DataFrame()
+            terms = [query] + (extra_terms or [])
+            seen_ids: set = set()
+            all_rows = []
+            for term in terms:
+                print(f"  [HuggingFace] '{term}'", end=" ", flush=True)
+                try:
+                    rows = []
+                    for ds in list_datasets(search=term, limit=limit, sort="downloads", full=True):
+                        if ds.id in seen_ids:
+                            continue
+                        seen_ids.add(ds.id)
+                        tags = getattr(ds, "tags", []) or []
+                        size_bytes = sum(getattr(s, "size", 0) or 0 for s in (getattr(ds, "siblings", []) or []))
+                        size_mb = size_bytes / (1024 * 1024)
+                        size_disk = f"{size_mb:.1f} MB" if 0 < size_mb < 1024 else (f"{size_mb/1024:.2f} GB" if size_mb >= 1024 else None)
+                        row_count = next((t.replace("size_categories:", "") for t in tags if "size_categories:" in t), None)
+                        parts = [p for p in [size_disk, row_count] if p]
+                        rows.append({
+                            "id": ds.id, "source": "huggingface",
+                            "url": f"https://huggingface.co/datasets/{ds.id}",
+                            "downloads": getattr(ds, "downloads", 0) or 0,
+                            "likes": getattr(ds, "likes", 0) or 0,
+                            "size_category": " | ".join(parts) if parts else "unknown",
+                            "license": next((t.replace("license:", "") for t in tags if t.startswith("license:")), "unknown"),
+                            "tags": tags,
+                        })
+                    print(f"-> {len(rows)}")
+                    all_rows.extend(rows)
+                except Exception as e:
+                    print(f"[!] {e}")
+            return pd.DataFrame(all_rows) if all_rows else pd.DataFrame()
 
         elif source == "kaggle":
             print("  [Kaggle API]", end=" ", flush=True)
@@ -235,33 +208,159 @@ class DataCollectionAgent:
 
         return pd.DataFrame()
 
+    def fetch_generic(self, source: dict, query: str) -> pd.DataFrame:
+        """Fetch any JSON API source suggested by Gemini."""
+        name = source.get("name", "unknown")
+        print(f"  [{name}]", end=" ", flush=True)
+        try:
+            url = source["search_url"].replace("{query}", requests.utils.quote(query))
+            params = {k: (v.replace("{query}", query) if isinstance(v, str) else v)
+                      for k, v in source.get("params", {}).items()}
+            headers = source.get("headers", {})
+            resp = requests.get(url, params=params, headers=headers, timeout=15)
+            resp.raise_for_status()
+            ct = resp.headers.get("Content-Type", "")
+            if "html" in ct or (not resp.text.strip().startswith(("{", "["))):
+                print(f"[!] {name} returned HTML (SPA), skipping")
+                return pd.DataFrame()
+            data = resp.json()
+
+            # navigate to result list using dot-path e.g. "hits.hits"
+            result_path = source.get("result_path", "")
+            items = data
+            for key in (result_path.split(".") if result_path else []):
+                if isinstance(items, dict):
+                    items = items.get(key, [])
+            if not isinstance(items, list):
+                items = [items] if isinstance(items, dict) else []
+
+            field_map = source.get("field_map", {})
+            rows = []
+            for item in items:
+                row = {
+                    "source": source.get("name", "custom").lower().replace(" ", "_"),
+                    "downloads": 0, "likes": 0, "size_category": "unknown",
+                    "license": "unknown", "tags": [],
+                }
+                for our_field, their_field in field_map.items():
+                    val = item.get(their_field, "")
+                    if val:
+                        row[our_field] = str(val)
+                if "id" not in row:
+                    row["id"] = f"{row['source']}:{hash(str(item)) % 100000}"
+                rows.append(row)
+            print(f"-> {len(rows)}")
+            return pd.DataFrame(rows)
+        except Exception as e:
+            print(f"[!] {e}")
+            return pd.DataFrame()
+
     def merge(self, sources: list[pd.DataFrame]) -> pd.DataFrame:
         non_empty = [df for df in sources if df is not None and not df.empty]
         return pd.concat(non_empty, ignore_index=True) if non_empty else pd.DataFrame()
 
 
 # ------------------------------------------------------------------------------
-# SEARCH + RANKING
+# SOURCE DISCOVERY + SEARCH
 # ------------------------------------------------------------------------------
+
+def _expand_query(query: str) -> list[str]:
+    prompt = f"""Generate search query variations for finding datasets on HuggingFace Hub.
+
+Original query: "{query}"
+
+Return a JSON array of 5-7 short search terms that would find semantically related datasets
+that might use different terminology, abbreviations, or domain-specific names.
+
+Example: "toxic comment" -> ["hate speech", "offensive language", "abusive text", "online harassment", "content moderation"]
+
+Return ONLY a JSON array of strings, no explanation."""
+    try:
+        raw = _strip_fences(_gemini(prompt, system=False))
+        terms = json.loads(raw)
+        terms = [query] + [t for t in terms if t.lower() != query.lower()]
+        return terms[:7]
+    except Exception:
+        return [query]
+
+
+def _think_sources(query: str) -> list[dict]:
+    print("Gemini выбирает источники...")
+    prompt = f"""You are a dataset discovery expert. For the ML topic: "{query}"
+
+Think about which sources are most likely to have relevant datasets.
+Consider: general repositories, domain-specific archives, government portals, academic data sources.
+
+Return a JSON array of sources to search. Each source:
+{{
+  "name": "Human readable name",
+  "type": "huggingface" | "kaggle" | "zenodo" | "api",
+  "reason": "one sentence why this source is relevant for the topic"
+}}
+
+For type "api" (any other REST API with JSON response), also include:
+{{
+  "search_url": "https://... (use {{query}} as placeholder for search term)",
+  "params": {{"key": "value or {{query}}"}},
+  "headers": {{}},
+  "result_path": "dot.path.to.results.array in JSON response",
+  "field_map": {{
+    "id": "their_id_field",
+    "name": "their_name_field",
+    "url": "their_url_field",
+    "description_raw": "their_description_field"
+  }}
+}}
+
+Rules:
+- Only suggest sources with FREE public access (no auth required for basic search)
+- Always include huggingface and zenodo
+- Add domain-specific sources relevant to "{query}"
+- Maximum 6 sources total
+
+Return ONLY the JSON array, no markdown fences."""
+
+    try:
+        raw = _strip_fences(_gemini(prompt, system=False))
+        sources = json.loads(raw)
+        for s in sources:
+            print(f"  + {s['name']} ({s['type']}) — {s.get('reason','')}")
+        return sources
+    except Exception as e:
+        print(f"  [!] Gemini error, using defaults: {e}")
+        return [
+            {"name": "HuggingFace", "type": "huggingface"},
+            {"name": "Zenodo",      "type": "zenodo"},
+        ]
+
 
 def full_search(query: str) -> list[dict]:
     print(f"\nТема: '{query}'\n")
+    sources = _think_sources(query)
+
+    print("\nGemini расширяет поисковые запросы для HuggingFace...")
+    hf_terms = _expand_query(query)
+    print(f"  Термины: {hf_terms}\n")
+
     agent = DataCollectionAgent()
+    dfs = []
 
-    print("-- Метод 1: Открытые датасеты")
-    hf_df = agent.load_dataset(query, source="hf", limit=50)
-    kg_df = agent.load_dataset(query, source="kaggle", limit=30)
+    for source in sources:
+        stype = source.get("type")
+        if stype == "huggingface":
+            dfs.append(agent.load_dataset(query, source="hf", limit=30, extra_terms=hf_terms[1:]))
+        elif stype == "kaggle":
+            dfs.append(agent.load_dataset(query, source="kaggle", limit=30))
+        elif stype == "zenodo":
+            dfs.append(agent.fetch_api(
+                "https://zenodo.org/api/records",
+                {"q": query, "type": "dataset", "size": 20, "sort": "mostviewed"},
+                source="zenodo"
+            ))
+        elif stype == "api":
+            dfs.append(agent.fetch_generic(source, query))
 
-    print("\n-- Метод 2: Скрапинг")
-    zen_df = agent.fetch_api("https://zenodo.org/api/records",
-                             {"q": query, "type": "dataset", "size": 20, "sort": "mostviewed"}, source="zenodo")
-    uci_df = agent.scrape("https://archive.ics.uci.edu/datasets", "a[href*='/dataset/']",
-                          params={"search": query}, source="UCI ML Repository")
-    gds_df = agent.scrape(
-        f"https://datasetsearch.research.google.com/search?query={requests.utils.quote(query)}",
-        "script[type='application/ld+json']", source="Google Dataset Search")
-
-    candidates = agent.merge([hf_df, kg_df, zen_df, uci_df, gds_df]).to_dict("records")
+    candidates = agent.merge(dfs).to_dict("records")
     print(f"\n   Всего кандидатов: {len(candidates)}")
     return candidates
 
@@ -283,7 +382,12 @@ def rank_with_agent(candidates: list[dict], topic: str) -> list[dict]:
                 all_ranked.extend(json.loads(text[start:end]))
         except Exception as e:
             print(f"  [!] Ошибка в chunk {i//CHUNK + 1}: {e}")
-    return sorted(all_ranked, key=lambda x: x.get("relevance_score", 0), reverse=True)
+    ranked = sorted(all_ranked, key=lambda x: x.get("relevance_score", 0), reverse=True)
+    filtered = [d for d in ranked if d.get("relevance_score", 0) >= 4]
+    dropped = len(ranked) - len(filtered)
+    if dropped:
+        print(f"  Отброшено нерелевантных: {dropped}")
+    return filtered
 
 
 # ------------------------------------------------------------------------------
@@ -488,7 +592,7 @@ def _run_pipeline(output_dir: str, topic: str) -> None:
         print(f"  {unify_path}")
         subprocess.run([sys.executable, str(unify_path)])
     cmd_preview(argparse.Namespace(dir=output_dir, n=5))
-    run_eda(output_dir)
+    run_eda(output_dir, topic)
 
 
 # ------------------------------------------------------------------------------
