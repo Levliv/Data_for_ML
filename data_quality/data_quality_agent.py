@@ -146,23 +146,38 @@ class DataQualityAgent:
 
     # -- skill 2: fix --
 
-    def fix(self, df: pd.DataFrame, strategy: dict) -> pd.DataFrame:
+    # колонки которые нельзя трогать при очистке
+    TARGET_COLS = {"label", "target", "class", "category", "toxic",
+                   "sentiment", "y", "split"}
+
+    def fix(self, df: pd.DataFrame, strategy: dict,
+            protected_cols: list[str] | None = None) -> pd.DataFrame:
         """
         strategy keys:
           missing:    'median' | 'mean' | 'mode' | 'drop' | 'ffill' | 'constant:<value>'
           duplicates: 'drop' | 'keep_first' | 'keep_last' | 'none'
           outliers:   'clip_iqr' | 'clip_zscore' | 'drop' | 'none'
+
+        protected_cols: колонки-метки, которые не изменя��тся (label, target и т.п.)
         """
+        # автоопределение защищённых колонок
+        auto_protected = {c for c in df.columns
+                          if c in self.TARGET_COLS or c.startswith("_")}
+        if protected_cols:
+            auto_protected.update(protected_cols)
+
         result = df.copy()
         if "duplicates" in strategy:
             result = self._fix_duplicates(result, strategy["duplicates"])
         if "missing" in strategy:
-            result = self._fix_missing(result, strategy["missing"])
+            result = self._fix_missing(result, strategy["missing"], auto_protected)
         if "outliers" in strategy:
-            result = self._fix_outliers(result, strategy["outliers"])
+            result = self._fix_outliers(result, strategy["outliers"], auto_protected)
         return result
 
-    def _fix_missing(self, df: pd.DataFrame, strategy: str) -> pd.DataFrame:
+    def _fix_missing(self, df: pd.DataFrame, strategy: str,
+                     protected: set[str] | None = None) -> pd.DataFrame:
+        protected = protected or set()
         if strategy == "drop":
             return df.dropna()
         if strategy == "ffill":
@@ -170,6 +185,8 @@ class DataQualityAgent:
         if strategy.startswith("constant:"):
             return df.fillna(strategy.split(":", 1)[1])
         for col in df.select_dtypes(include=[np.number]).columns:
+            if col in protected:
+                continue
             if df[col].isna().any():
                 if strategy == "median":
                     df[col] = df[col].fillna(df[col].median())
@@ -178,6 +195,8 @@ class DataQualityAgent:
                 elif strategy == "mode":
                     df[col] = df[col].fillna(df[col].mode()[0])
         for col in df.select_dtypes(include=["object"]).columns:
+            if col in protected:
+                continue
             if df[col].isna().any():
                 fill = df[col].mode()[0] if not df[col].mode().empty else "unknown"
                 df[col] = df[col].fillna(fill)
@@ -189,10 +208,14 @@ class DataQualityAgent:
         keep = {"drop": "first", "keep_first": "first", "keep_last": "last"}.get(strategy, "first")
         return df.drop_duplicates(keep=keep)
 
-    def _fix_outliers(self, df: pd.DataFrame, strategy: str) -> pd.DataFrame:
+    def _fix_outliers(self, df: pd.DataFrame, strategy: str,
+                      protected: set[str] | None = None) -> pd.DataFrame:
         if strategy == "none":
             return df
+        protected = protected or set()
         for col in df.select_dtypes(include=[np.number]).columns:
+            if col in protected:
+                continue
             series = df[col].dropna()
             if len(series) < 4:
                 continue
@@ -530,7 +553,9 @@ Examples:
     proposals = agent.suggest_strategies(report, args.task)
 
     # -- apply all 3 and show comparison --
-    cleaned = [agent.fix(df, p["strategy"]) for p in proposals]
+    # label_col и служебные колонки (_source и т.п.) не трогаем
+    protected = [args.label_col] if args.label_col else []
+    cleaned = [agent.fix(df, p["strategy"], protected_cols=protected) for p in proposals]
 
     W = 65
     print("\n" + "=" * W)
