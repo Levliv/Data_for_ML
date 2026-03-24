@@ -345,18 +345,23 @@ Texts:
 
 Return a JSON array of {len(texts)} objects in the same order as input.
 Return ONLY the JSON array, no markdown fences."""
-        try:
-            raw = _strip_fences(_call_gemini(prompt))
-            parsed = json.loads(raw)
-            if isinstance(parsed, list) and len(parsed) == len(texts):
-                return parsed
-            # fallback: try to align by id
-            by_id = {r.get("id", i): r for i, r in enumerate(parsed)}
-            return [by_id.get(i, {"label": "unknown", "confidence": 0.0, "reason": ""})
-                    for i in range(len(texts))]
-        except Exception as e:
-            print(f"  [!] Batch error: {e}")
-            return [{"label": "unknown", "confidence": 0.0, "reason": ""}] * len(texts)
+        for attempt in range(2):
+            try:
+                raw = _call_gemini(prompt)
+                if not raw:
+                    raise ValueError("Gemini returned empty response")
+                parsed = json.loads(_strip_fences(raw))
+                if isinstance(parsed, list) and len(parsed) == len(texts):
+                    return parsed
+                # fallback: try to align by id
+                by_id = {r.get("id", i): r for i, r in enumerate(parsed)}
+                return [by_id.get(i, {"label": "unknown", "confidence": 0.0, "reason": ""})
+                        for i in range(len(texts))]
+            except Exception as e:
+                print(f"  [!] Batch error (attempt {attempt+1}/2): {e}")
+                if attempt == 0:
+                    time.sleep(5)
+        return [{"label": "unknown", "confidence": 0.0, "reason": ""}] * len(texts)
 
     # -- skill 2: generate_spec --
 
@@ -453,7 +458,7 @@ Return ONLY the markdown text, no fences."""
             print(f"  Comparing {len(auto)} rows (auto vs human)")
         else:
             kappa = float(df_labeled.attrs.get("self_consistency_kappa", 0.0))
-            agree = round((kappa * (1 - 0) + 0) * 100, 1)  # approximate from kappa
+            agree = float(df_labeled.attrs.get("mean_row_agreement", kappa * 100))
 
         return QualityMetrics(
             kappa=kappa,
@@ -625,6 +630,20 @@ Return ONLY the markdown text, no fences."""
         nb_path = topic_path / "notebooks" / "annotation_report.ipynb"
         nb_path.parent.mkdir(parents=True, exist_ok=True)
         nb_path.write_text(nbformat.writes(nb))
+
+        try:
+            import nbclient
+            print("  Executing notebook...")
+            client = nbclient.NotebookClient(
+                nb, timeout=300, kernel_name="python3",
+                resources={"metadata": {"path": str(ROOT)}},
+            )
+            client.execute()
+            nb_path.write_text(nbformat.writes(nb))
+            print("  [ok] notebook executed and saved with outputs")
+        except Exception as e:
+            print(f"  [!] Could not execute notebook: {e}")
+
         return nb_path
 
 
