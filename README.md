@@ -1,21 +1,24 @@
 # ML for Data — Dataset Agent
 
-Два агента для сбора и контроля качества данных:
-- **DataCollectionAgent** — поиск, ранжирование и скачивание датасетов
-- **DataQualityAgent** — обнаружение и устранение проблем качества данных
+Агентный ML-пайплайн с Human-in-the-Loop: сбор данных → чистка → авторазметка → активное обучение.
 
-## Структура
+---
+
+## Структура проекта
 
 ```
-agents/
-  data_collection_agent.py  — сбор данных (CLI + API)
-  data_quality_agent.py     — контроль качества (API)
-config.yaml                 — конфигурация (автообновляется после поиска)
-notebooks/
-  eda.ipynb                 — автогенерируется после скачивания
-  data_quality.ipynb        — EDA качества данных (3 части + бонус)
-data/raw/                   — скачанные датасеты в формате Parquet
-requirements.txt
+data_collection/       — поиск, ранжирование, скачивание датасетов
+data_quality/          — обнаружение и устранение проблем качества
+data_annotation/       — LLM-авторазметка с consistency check
+active_learning/       — AL-эксперимент: entropy vs random sampling
+nb_display.py          — утилита выполнения и отображения ноутбуков
+config.yaml            — конфигурация (автообновляется после поиска)
+<topic>/
+  data/raw/            — скачанные датасеты в формате Parquet
+  data/clean/          — очищенные данные
+  data/labeled/        — размеченные данные + LabelStudio JSON
+  notebooks/           — EDA, quality_report, annotation_report, al_experiment
+  annotation_spec.md   — спецификация разметки, сгенерированная LLM
 ```
 
 ---
@@ -25,152 +28,192 @@ requirements.txt
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-
 pip install -r requirements.txt
 ```
 
 **Обязательные переменные окружения:**
 
 ```bash
-export GEMINI_API_KEY=AIza...        # бесплатно: aistudio.google.com/app/apikey
+export GEMINI_API_KEY=AIza...   # бесплатно: aistudio.google.com/app/apikey
 ```
 
 **Опциональные:**
 
 ```bash
-export KAGGLE_API_TOKEN=KGAT_...     # поиск на Kaggle
-export TELEGRAM_BOT_TOKEN=...        # уведомления в Telegram (для monitor)
-export TELEGRAM_CHAT_ID=...
+export KAGGLE_USERNAME=...
+export KAGGLE_KEY=...
 ```
 
 ---
 
-## Агент 1 — Сбор данных (CLI)
+## Кейс: токсичные комментарии на русском
 
-### Поиск и скачивание
+### 1. Задача и датасет
 
-```bash
-python agents/data_collection_agent.py search "climate weather"
-```
+**Модальность:** текст (комментарии пользователей на русском языке)
 
-Что произойдёт:
-1. Поиск на HuggingFace, Kaggle, Papers with Code, Zenodo, UCI
-2. Gemini ранжирует и дедуплицирует кандидатов
-3. Выводит список с оценками — выбери номера через запятую, `all` или `q`
-4. Gemini генерирует `download_datasets.py`, запускает его
-5. Данные сохраняются в `data/raw/<source>/<slug>/data.parquet`
-6. Gemini генерирует `notebooks/eda.ipynb`
-7. `config.yaml` обновляется автоматически
+**Задача:** бинарная классификация — токсичный (1) / нетоксичный (0)
 
-### Скачать из сохранённого списка (без повторного поиска)
+**Источники данных:**
 
-```bash
-python agents/data_collection_agent.py download datasets_found.json
-```
+| Датасет | Источник | Строк |
+|---------|----------|-------|
+| AlexSham/Toxic_Russian_Comments | HuggingFace | 248 290 |
+| Mnwa/russian-toxic | HuggingFace | 347 527 |
+| **Итого (combined.parquet)** | | **595 817** |
 
-### Мониторинг новых датасетов
-
-```bash
-python agents/data_collection_agent.py monitor "climate weather"
-# проверяет каждый час, уведомляет в Telegram при появлении новых
-```
-
-### Флаги
-
-```bash
-python agents/data_collection_agent.py search "тема" --output-dir data/raw
-```
-
-### Выходные файлы
-
-```
-config.yaml               — обновляется: тема, источники, рекомендованные лимиты
-datasets_found.json       — все найденные датасеты с оценками релевантности
-download_datasets.py      — сгенерированный скрипт скачивания
-
-data/raw/
-  huggingface/<slug>/data.parquet
-  kaggle/<slug>/data.parquet
-  zenodo/<record-id>/data.parquet
-
-notebooks/eda.ipynb       — автогенерируется Gemini после скачивания
-```
+**Классы в оригинальной разметке:**
+- 0 (нетоксичный): 277 724 (46.6%)
+- 1 (токсичный): 318 093 (53.4%)
+- Дисбаланс: 1.15 — практически сбалансированный датасет
 
 ---
 
-## Агент 2 — Качество данных (Python API + ноутбук)
+### 2. Что делал каждый агент
 
-### Запуск ноутбука
+#### DataCollectionAgent
 
-```bash
-# Через VSCode: открой notebooks/data_quality.ipynb → Run All
-# Через браузер:
-jupyter notebook notebooks/data_quality.ipynb
-```
+Поиск датасетов через Gemini: агент сам выбирал источники (HuggingFace, Kaggle, Zenodo, Papers with Code, GitHub) и расширял поисковые запросы на синонимы (hate speech, offensive language, cyberbullying). Найденные кандидаты ранжировались Gemini по релевантности — отброшены датасеты со score < 4.
 
-Ноутбук работает с файлами из `data/raw/` автоматически.
+**Решение:** скачаны датасеты с оценками 10/10 и 9/10. Оба хранились в одинаковом формате (`text`, `label`) — унификация прошла без потерь.
 
-### Использование агента напрямую
+Агент автоматически генерирует:
+- `download.py` — скрипт скачивания под конкретные датасеты
+- `unify_template.py` — приведение к единой схеме (`text`, `label`, `_source`, `_dataset_id`)
+- `notebooks/eda.ipynb` — EDA с распределением классов и длин текстов
 
-```python
-import pandas as pd
-from agents.data_quality_agent import DataQualityAgent
+#### DataQualityAgent
 
-df = pd.read_parquet('data/raw/huggingface/<slug>/data.parquet')
-agent = DataQualityAgent()
+Детектировал три типа проблем: пропуски, дубликаты, выбросы (IQR). Генерировал три стратегии чистки и таблицы Before/After для каждой. Предложенные стратегии:
 
-# Шаг 1 — обнаружить проблемы
-report = agent.detect_issues(df)
-print(report)
-# {'missing': {...}, 'duplicates': N, 'outliers': {...}, 'imbalance': {...}}
+| Стратегия | Описание |
+|-----------|----------|
+| Strict | удалить дубликаты, приоритет точности |
+| Medium | удалить дубликаты, сохранить баланс классов |
+| Mild | ничего не менять |
 
-# Шаг 2 — почистить (выбери стратегию)
-df_clean = agent.fix(df, strategy={
-    'missing':    'median',    # median | mean | mode | drop | ffill | constant:<val>
-    'duplicates': 'drop',      # drop | keep_first | keep_last | none
-    'outliers':   'clip_iqr',  # clip_iqr | clip_zscore | drop | none
-})
+**Решение:** выбрана стратегия Medium — удалены 22 807 дубликатов (3.8%), баланс классов сохранён.
 
-# Шаг 3 — сравнить до/после
-comparison = agent.compare(df, df_clean)
-print(comparison)
+#### AnnotationAgent
 
-# Бонус — Gemini объясняет проблемы и рекомендует стратегию
-explanation = agent.explain_with_llm(report, task_description="code generation")
-print(explanation)
-```
+Сэмплировал 2000 строк из очищенного датасета, генерировал `annotation_spec.md` с описанием классов, примерами и edge-cases, затем размечал батчами по 20 строк через Gemini. Для оценки надёжности выполнял consistency check: 3 независимых прохода по 30 случайным строкам.
 
-### Что делает каждый скилл
+**Решение:** размечено 2000 примеров. Результаты автоматически экспортированы в `labelstudio_import.json` для ручной доразметки.
 
-| Скилл | Метод | Что обнаруживает / делает |
-|---|---|---|
-| detect | `detect_issues(df)` | пропуски, дубликаты, выбросы (IQR), дисбаланс классов |
-| fix | `fix(df, strategy)` | чистка по выбранной стратегии |
-| compare | `compare(df_before, df_after)` | таблица метрик до/после с % изменением |
-| explain | `explain_with_llm(report, task)` | Gemini объясняет проблемы и рекомендует стратегию |
+#### ActiveLearningAgent
+
+Сравнивал две стратегии выбора батча: entropy sampling (выбираем примеры, где модель наименее уверена) vs random sampling. Тест-сет зафиксирован (400 строк, стратифицированный), pool — оставшиеся 1100 строк. На каждой итерации добавляется 100 примеров, модель переобучается и оценивается на тест-сете.
+
+Запуск с 4 моделями: logreg, rubert-tiny, rf, svm.
 
 ---
 
-## Полный пайплайн
+### 3. HITL-точки: что проверялось и что было исправлено
+
+| Checkpoint | Что показано пользователю | Решение пользователя |
+|------------|--------------------------|----------------------|
+| После поиска | Таблица из 20 кандидатов с оценками релевантности, источниками, лицензиями | Выбраны датасеты 1 и 2 (score 10/10 и 9/10) |
+| После чистки | Три стратегии с таблицами Before/After | Выбрана стратегия Medium |
+| Перед разметкой | Вопрос о числе примеров (default 300, рекомендация 2000–5000) | 2000 примеров |
+| После разметки | Label distribution, confidence, kappa; 1 строка с низким confidence (0.5) | Строка оставлена как класс 0 |
+| Перед AL | Вопрос о n_start | 500 |
+| После AL | Savings analysis, learning curves | Эксперименты с разными моделями |
+
+**Исправлений в данных:** 0 — единственный low-confidence пример (`"на этой бы пшенице........"`) уже был размечен корректно как класс 0.
+
+---
+
+### 4. Метрики качества на каждом этапе
+
+#### Сбор данных
+
+| Метрика | Значение |
+|---------|----------|
+| Найдено кандидатов | 20 (Zenodo) |
+| После ранжирования Gemini (score ≥ 4) | 5 датасетов |
+| Скачано | 2 датасета, 595 817 строк |
+
+#### Чистка данных
+
+| Метрика | До | После |
+|---------|----|-------|
+| Строк | 595 817 | 573 010 |
+| Дубликаты | 22 807 | 0 |
+| Пропуски | 0 | 0 |
+| Выбросы (IQR) | 0 | 0 |
+| Дисбаланс классов (ratio) | 1.15 | 1.09 |
+
+#### Авторазметка
+
+| Метрика | Значение |
+|---------|----------|
+| ��азмечено строк | 2 000 |
+| Cohen's κ (consistency check) | **0.862** (almost perfect) |
+| Agreement (3 прохода, 30 строк) | 97.8% |
+| Средний confidence | 0.935 ± 0.083 |
+| Low confidence (< 0.6) | 1 строка (0.05%) |
+| Класс 0 (авторазметка) | 1469 (73.5%) |
+| Класс 1 (авторазметка) | 531 (26.5%) |
+
+> Расхождение с оригинальной разметкой (53% токсичных vs 27% у LLM) указывает на то, что Gemini применяет более мягкий порог токсичности, чем оригинальные аннотаторы.
+
+#### Active Learning — сравнение моделей (n_start=500, 8 итераций, batch=100)
+
+| Модель | Max F1 Entropy | Max F1 Random | AL экономия |
+|--------|---------------|---------------|-------------|
+| logreg | 0.540 | 0.560 | 800 прим. (61.5%) |
+| rubert-tiny | 0.533 | 0.543 | 500 прим. (38.5%) |
+| rf | 0.500 | 0.531 | нет (entropy хуже random) |
+| svm | **0.544** | 0.378 | 800 прим. (61.5%) — random нестабилен |
+
+**Лучшая модель для AL-фреймворка: logreg** — стабильный random baseline, надёжная экономия разметки.
+
+---
+
+### 5. Ретроспектива
+
+#### Что сработало
+
+- **Автоматический поиск датасетов** — Gemini корректно выбрал источники и нашёл релевантные датасеты с первого запроса
+- **Унификация схем** — оба датасета уже имели столбцы `text` и `label`, скрипт объединения сработал без ошибок
+- **Авторазметка** — Cohen's κ = 0.862 говорит о высокой согласованности Gemini с самим собой; спецификация разметки с примерами и edge-cases генерируется автоматически и сразу пригодна для LabelStudio
+- **HITL-структура** — пайплайн корректно останавливается на каждом ключевом решении и не принимает решения за пользователя
+
+#### Что не сработало
+
+- **F1 ~0.50 у всех моделей** — TF-IDF + классические ML-модели не справляются с русской морфологией на малой выборке (2000 примеров из 573K). Модели фактически работают на уровне случайного угадывания
+- **Entropy хуже Random у RF и частично у других** — на несбалансированной авторазметке (73/27) entropy sampling смещает обучающую выборку в сторону граничных примеров, дестабилизируя обучение
+- **rubert-tiny не дал прироста над logreg** — в коде используется как замороженный энкодер (mean pooling → LogReg), без fine-tuning. Разницы с TF-IDF почти нет
+- **SVM Random baseline деградирует** — CalibratedClassifierCV нестабилен на малых батчах, F1 падает до 0.34–0.38 при случайном sampling
+
+#### Что сделать иначе
+
+1. **Использовать всю оригинальную разметку** (573K строк) вместо авторазметки 2K — у исходных датасетов уже есть качественные метки
+2. **Fine-tuning ruBERT/ruRoBERTa** вместо frozen encoder — на полном датасете даст F1 0.85+
+3. **Выровнять дисбаланс в авторазметке** перед AL — стратифицированный sampling при формировании labeled pool
+4. **Увеличить n_start** для AL — при 500 примерах из 2000 дисперсия метрик слишком высока для надёжных выводов; рекомендуется n_start ≥ 1000
+
+---
+
+## Запуск пайплайна
 
 ```bash
-# 1. Найти и скачать датасеты
-python agents/data_collection_agent.py search "programming questions"
+# Полный пайплайн через smart_search skill
+/smart_search <тема>
 
-# 2. Открыть ноутбук с EDA качества
-jupyter notebook notebooks/data_quality.ipynb
+# Или отдельные этапы:
+source .venv/bin/activate
 
-# 3. Или запустить агент качества из Python напрямую
-python - << 'EOF'
-import pandas as pd
-from pathlib import Path
-from agents.data_quality_agent import DataQualityAgent
+# Сбор данных
+PYTHONPATH=. python3 data_collection/data_collection_agent.py search "<тема>"
 
-df = pd.read_parquet(next(Path('data/raw').rglob('data.parquet')))
-agent = DataQualityAgent()
-report = agent.detect_issues(df)
-print(report)
-df_clean = agent.fix(df, strategy={'missing': 'median', 'duplicates': 'drop', 'outliers': 'clip_iqr'})
-agent.compare(df, df_clean)
-EOF
+# Авторазметка
+PYTHONPATH=. python3 data_annotation/annotation_agent.py <topic> --task "<тема>" --rows 2000
+
+# Active Learning
+PYTHONPATH=. python3 active_learning/al_agent.py <topic> \
+    --parquet <topic>/data/labeled/auto_labeled.parquet \
+    --label-col _label \
+    --model logreg \
+    --compare --n-start 500 --iterations 8 --batch-size 100
 ```
